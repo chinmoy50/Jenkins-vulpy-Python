@@ -1,0 +1,48 @@
+name: SAST Check
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+jobs:
+  sast-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up Java JDK
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '11'
+      
+      - name: Build with Ant
+        run: ant build  # Adjust to your actual build command
+      
+      - name: Create project zip
+        run: zip -r project.zip . -x "*.git*" "*/node_modules/*" "*/vendor/*" "*.zip"
+      
+      - name: Perform SAST Scan
+        id: sast
+        run: |
+          RESPONSE=$(curl -X POST \
+            -H "Client-ID: ${{ secrets.INTRUCEPT_CLIENT_ID }}" \
+            -H "Client-Secret: ${{ secrets.INTRUCEPT_CLIENT_SECRET }}" \
+            -F "projectZipFile=@project.zip" \
+            -F "applicationId=${{ secrets.INTRUCEPT_APPLICATION_ID }}" \
+            -F "scanName=SAST Scan - ${{ github.sha }}" \
+            -F "language=java" \
+            https://appsecops-api.intruceptlabs.com/api/v1/integrations/sast-scans)
+          
+          CAN_PROCEED=$(echo $RESPONSE | jq -r '.canProceed')
+          echo "canProceed=$CAN_PROCEED" >> $GITHUB_OUTPUT
+          
+          VULNS_TABLE=$(echo $RESPONSE | jq -r '.vulnsTable')
+          echo "Vulnerabilities Table:"
+          echo "$VULNS_TABLE"
+      
+      - name: Check SAST result
+        if: steps.sast.outputs.canProceed != 'true'
+        run: |
+          echo "SAST scan failed. Please review the security issues."
+          exit 1
