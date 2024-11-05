@@ -1,4 +1,4 @@
-<project name="vulpy" default="help" basedir=".">
+<project name="vulpy" basedir=".">
     
     <!-- Set global properties for the project -->
     <property name="src.dir" value="bad"/>
@@ -18,19 +18,6 @@
         </exec>
     </target>
 
-    <!-- Run the application -->
-    <target name="run" depends="install-deps">
-        <exec executable="${python}">
-            <arg line="${src.dir}/vulpy.py"/>
-        </exec>
-    </target>
-
-    <!-- Run tests using unittest or pytest -->
-    <target name="test">
-        <exec executable="${python}">
-            <arg line="-m unittest discover -s tests"/>
-        </exec>
-    </target>
 
     <!-- Target to create a distribution package (optional) -->
     <target name="dist" depends="clean">
