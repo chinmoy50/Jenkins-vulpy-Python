@@ -17,7 +17,7 @@ jobs:
           java-version: '11'
       
       - name: Build with Ant
-        run: ant build  # Adjust to your actual build command
+        run: ant -f build.xml  # Adjust to your actual build command
       
       - name: Create project zip
         run: zip -r project.zip . -x "*.git*" "*/node_modules/*" "*/vendor/*" "*.zip"
