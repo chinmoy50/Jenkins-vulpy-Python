@@ -14,11 +14,11 @@ pipeline {
             steps {
                 script {
                 try {
-                    sh 'rm -rf venv || true'
-                    sh 'rm -rf project.zip || true'
-                    sh 'rm -rf *.json || true'
-                    sh 'rm -rf *.csv || true'
-                    sh 'rm -rf *.sh || true'
+                    bat 'rmdir /S /Q venv || true'
+                    bat 'rmdir /S /Q project.zip || true'
+                    bat 'rmdir /S /Q *.json || true'
+                    bat 'rmdir /S /Q *.csv || true'
+                    bat 'rmdir /S /Q *.sh || true'
                 } catch (Exception e) {
                     echo "Error during cleanup: ${e}"
                 }
@@ -35,11 +35,11 @@ pipeline {
         stage('Create ZIP Files') {
             steps {
                 script {
-                    sh 'rm -rf project_folder'
-                    sh 'mkdir project_folder'
-                    sh 'find . -maxdepth 1 -not -name "." -not -name ".." -not -name ".git" -not -name "venv" -not -name "project_folder" -exec mv {} project_folder/ \\;'
-                    sh 'ls -la project_folder'
-                    sh 'zip -r project.zip project_folder'
+                    bat 'rmdir /S /Q project_folder'
+                    bat 'mkdir project_folder'
+                    bat 'find . -maxdepth 1 -not -name "." -not -name ".." -not -name ".git" -not -name "venv" -not -name "project_folder" -exec mv {} project_folder/ \\;'
+                    bat 'ls -la project_folder'
+                    bat 'zip -r project.zip project_folder'
                 }
             }
         }
@@ -125,14 +125,14 @@ pipeline {
 
         stage('Set Up Python') {
             steps {
-                sh 'python3 -m venv venv'
-                sh '. venv/bin/activate && pip install --upgrade pip'
+                bat 'python3 -m venv venv'
+                bat '. venv/bin/activate && pip install --upgrade pip'
             }
         }
 
         stage('Install Dependencies') {
             steps {
-                sh '. venv/bin/activate && pip install -r requirements.txt'
+                bat '. venv/bin/activate && pip install -r requirements.txt'
             }
         }
 
