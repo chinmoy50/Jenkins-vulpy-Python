@@ -13,14 +13,18 @@ pipeline {
         stage('Clean Up Old Files') {
             steps {
                 script {
-                    sh 'rm -rf venv'
-                    sh 'rm -rf project.zip'
-                    sh 'rm -rf *.json'
-                    sh 'rm -rf *.csv'
-                    sh 'rm -rf *.sh'
+                try {
+                    sh 'rm -rf venv || true'
+                    sh 'rm -rf project.zip || true'
+                    sh 'rm -rf *.json || true'
+                    sh 'rm -rf *.csv || true'
+                    sh 'rm -rf *.sh || true'
+                } catch (Exception e) {
+                    echo "Error during cleanup: ${e}"
                 }
             }
         }
+    }
 
         stage('Checkout Code') {
             steps {
