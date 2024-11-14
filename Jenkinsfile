@@ -13,18 +13,14 @@ pipeline {
         stage('Clean Up Old Files') {
             steps {
                 script {
-                try {
-                    bat 'rmdir /S /Q venv || true'
-                    bat 'rmdir /S /Q project.zip || true'
-                    bat 'rmdir /S /Q *.json || true'
-                    bat 'rmdir /S /Q *.csv || true'
-                    bat 'rmdir /S /Q *.sh || true'
-                } catch (Exception e) {
-                    echo "Error during cleanup: ${e}"
+                    bat 'if exist venv rmdir /S /Q venv'
+                    bat 'if exist project.zip del /Q project.zip'
+                    bat 'del /Q *.json'
+                    bat 'del /Q *.csv'
+                    bat 'del /Q *.sh'
                 }
             }
         }
-    }
 
         stage('Checkout Code') {
             steps {
@@ -35,10 +31,15 @@ pipeline {
         stage('Create ZIP Files') {
             steps {
                 script {
-                    bat 'rmdir /S /Q project_folder'
+                    bat 'if exist project_folder rmdir /S /Q project_folder'
                     bat 'mkdir project_folder'
-                    bat 'move /Y * project_folder'
-                    bat 'powershell Compress-Archive -Path project_folder -DestinationPath project.zip'
+                    // Windows does not support `find` and `mv` in the same way, so using PowerShell to move files
+                    powershell '''
+                        Get-ChildItem -Exclude .git, venv, project_folder | ForEach-Object {
+                            Move-Item $_.FullName project_folder
+                        }
+                    '''
+                    bat 'powershell Compress-Archive -Path project_folder\\* -DestinationPath project.zip'
                 }
             }
         }
@@ -46,26 +47,22 @@ pipeline {
         stage('Perform SCA Scan') {
             steps {
                 script {
-                    def response = sh(script: """
-                        #!/bin/bash
-                        curl -v -X POST \
-                        -H "Client-ID: ${CLIENT_ID}" \
-                        -H "Client-Secret: ${CLIENT_SECRET}" \
-                        -F "projectZipFile=@project.zip" \
-                        -F "applicationId=${APPLICATION_ID}" \
-                        -F "scanName=New SCA Scan from Jenkins Pipeline" \
-                        -F "language=python" \
-                        "${SCA_API_URL}"
+                    def response = bat(script: """
+                        powershell -Command "curl -v -Method POST \
+                        -Headers @{'Client-ID'='${CLIENT_ID}'; 'Client-Secret'='${CLIENT_SECRET}'} \
+                        -Form 'projectZipFile=@project.zip' \
+                        -Form 'applicationId=${APPLICATION_ID}' \
+                        -Form 'scanName=New SCA Scan from Jenkins Pipeline' \
+                        -Form 'language=python' \
+                        -Uri '${SCA_API_URL}'"
                     """, returnStdout: true).trim()
 
                     def jsonResponse = readJSON(text: response)
                     def canProceedSCA = jsonResponse.canProceed
                     def vulnsTable = jsonResponse.vulnsTable
 
-                    def cleanVulnsTable = vulnsTable.replaceAll(/\x1B\[[;0-9]*m/, '')
-
                     echo "Vulnerabilities found during SCA:"
-                    echo "${cleanVulnsTable}"
+                    echo "${vulnsTable}"
 
                     env.CAN_PROCEED_SCA = canProceedSCA.toString()
                 }
@@ -87,26 +84,22 @@ pipeline {
             }
             steps {
                 script {
-                    def response = sh(script: """
-                        #!/bin/bash
-                        curl -v -X POST \
-                        -H "Client-ID: ${CLIENT_ID}" \
-                        -H "Client-Secret: ${CLIENT_SECRET}" \
-                        -F "projectZipFile=@project.zip" \
-                        -F "applicationId=${APPLICATION_ID}" \
-                        -F "scanName=New SAST Scan from Jenkins Pipeline" \
-                        -F "language=python" \
-                        "${SAST_API_URL}"
+                    def response = bat(script: """
+                        powershell -Command "curl -v -Method POST \
+                        -Headers @{'Client-ID'='${CLIENT_ID}'; 'Client-Secret'='${CLIENT_SECRET}'} \
+                        -Form 'projectZipFile=@project.zip' \
+                        -Form 'applicationId=${APPLICATION_ID}' \
+                        -Form 'scanName=New SAST Scan from Jenkins Pipeline' \
+                        -Form 'language=python' \
+                        -Uri '${SAST_API_URL}'"
                     """, returnStdout: true).trim()
 
                     def jsonResponse = readJSON(text: response)
                     def canProceedSAST = jsonResponse.canProceed
                     def vulnsTable = jsonResponse.vulnsTable
 
-                    def cleanVulnsTable = vulnsTable.replaceAll(/\x1B\[[;0-9]*m/, '')
-
                     echo "Vulnerabilities found during SAST:"
-                    echo "${cleanVulnsTable}"
+                    echo "${vulnsTable}"
 
                     env.CAN_PROCEED_SAST = canProceedSAST.toString()
                 }
@@ -124,14 +117,14 @@ pipeline {
 
         stage('Set Up Python') {
             steps {
-                bat 'python3 -m venv venv'
-                bat '. venv/bin/activate && pip install --upgrade pip'
+                bat 'python -m venv venv'
+                bat 'venv\\Scripts\\activate && python -m pip install --upgrade pip'
             }
         }
 
         stage('Install Dependencies') {
             steps {
-                bat '. venv/bin/activate && pip install -r requirements.txt'
+                bat 'venv\\Scripts\\activate && pip install -r requirements.txt'
             }
         }
 
