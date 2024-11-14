@@ -33,7 +33,6 @@ pipeline {
                 script {
                     bat 'if exist project_folder rmdir /S /Q project_folder'
                     bat 'mkdir project_folder'
-                    // Windows does not support `find` and `mv` in the same way, so using PowerShell to move files
                     powershell '''
                         Get-ChildItem -Exclude .git, venv, project_folder | ForEach-Object {
                             Move-Item $_.FullName project_folder
@@ -48,13 +47,24 @@ pipeline {
             steps {
                 script {
                     def response = bat(script: """
-                        powershell -Command "curl -v -Method POST \
-                        -Headers @{'Client-ID'='${CLIENT_ID}'; 'Client-Secret'='${CLIENT_SECRET}'} \
-                        -Form 'projectZipFile=@project.zip' \
-                        -Form 'applicationId=${APPLICATION_ID}' \
-                        -Form 'scanName=New SCA Scan from Jenkins Pipeline' \
-                        -Form 'language=python' \
-                        -Uri '${SCA_API_URL}'"
+                        powershell -Command "
+                        $client = New-Object System.Net.Http.HttpClient
+                        $client.DefaultRequestHeaders.Add('Client-ID', '${CLIENT_ID}')
+                        $client.DefaultRequestHeaders.Add('Client-Secret', '${CLIENT_SECRET}')
+                        $content = New-Object System.Net.Http.MultipartFormDataContent
+                        $fileStream = [System.IO.File]::OpenRead('project.zip')
+                        $fileContent = New-Object System.Net.Http.StreamContent($fileStream)
+                        $fileContent.Headers.ContentDisposition = New-Object System.Net.Http.Headers.ContentDispositionHeaderValue('form-data')
+                        $fileContent.Headers.ContentDisposition.Name = 'projectZipFile'
+                        $fileContent.Headers.ContentDisposition.FileName = 'project.zip'
+                        $content.Add($fileContent)
+                        $content.Add((New-Object System.Net.Http.StringContent('${APPLICATION_ID}')), 'applicationId')
+                        $content.Add((New-Object System.Net.Http.StringContent('New SCA Scan from Jenkins Pipeline')), 'scanName')
+                        $content.Add((New-Object System.Net.Http.StringContent('python')), 'language')
+                        $response = $client.PostAsync('${SCA_API_URL}', $content).Result
+                        $result = $response.Content.ReadAsStringAsync().Result
+                        Write-Output $result
+                        "
                     """, returnStdout: true).trim()
 
                     def jsonResponse = readJSON(text: response)
@@ -85,13 +95,24 @@ pipeline {
             steps {
                 script {
                     def response = bat(script: """
-                        powershell -Command "curl -v -Method POST \
-                        -Headers @{'Client-ID'='${CLIENT_ID}'; 'Client-Secret'='${CLIENT_SECRET}'} \
-                        -Form 'projectZipFile=@project.zip' \
-                        -Form 'applicationId=${APPLICATION_ID}' \
-                        -Form 'scanName=New SAST Scan from Jenkins Pipeline' \
-                        -Form 'language=python' \
-                        -Uri '${SAST_API_URL}'"
+                        powershell -Command "
+                        $client = New-Object System.Net.Http.HttpClient
+                        $client.DefaultRequestHeaders.Add('Client-ID', '${CLIENT_ID}')
+                        $client.DefaultRequestHeaders.Add('Client-Secret', '${CLIENT_SECRET}')
+                        $content = New-Object System.Net.Http.MultipartFormDataContent
+                        $fileStream = [System.IO.File]::OpenRead('project.zip')
+                        $fileContent = New-Object System.Net.Http.StreamContent($fileStream)
+                        $fileContent.Headers.ContentDisposition = New-Object System.Net.Http.Headers.ContentDispositionHeaderValue('form-data')
+                        $fileContent.Headers.ContentDisposition.Name = 'projectZipFile'
+                        $fileContent.Headers.ContentDisposition.FileName = 'project.zip'
+                        $content.Add($fileContent)
+                        $content.Add((New-Object System.Net.Http.StringContent('${APPLICATION_ID}')), 'applicationId')
+                        $content.Add((New-Object System.Net.Http.StringContent('New SAST Scan from Jenkins Pipeline')), 'scanName')
+                        $content.Add((New-Object System.Net.Http.StringContent('python')), 'language')
+                        $response = $client.PostAsync('${SAST_API_URL}', $content).Result
+                        $result = $response.Content.ReadAsStringAsync().Result
+                        Write-Output $result
+                        "
                     """, returnStdout: true).trim()
 
                     def jsonResponse = readJSON(text: response)
