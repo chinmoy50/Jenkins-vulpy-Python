@@ -37,9 +37,8 @@ pipeline {
                 script {
                     bat 'rmdir /S /Q project_folder'
                     bat 'mkdir project_folder'
-                    bat 'find . -maxdepth 1 -not -name "." -not -name ".." -not -name ".git" -not -name "venv" -not -name "project_folder" -exec mv {} project_folder/ \\;'
-                    bat 'ls -la project_folder'
-                    bat 'zip -r project.zip project_folder'
+                    bat 'move /Y * project_folder'
+                    bat 'powershell Compress-Archive -Path project_folder -DestinationPath project.zip'
                 }
             }
         }
