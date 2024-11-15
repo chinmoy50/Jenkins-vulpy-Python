@@ -2,14 +2,28 @@ pipeline {
     agent any
 
     environment {
-        CLIENT_ID = '123e4567-e89b-12d3-a456-426614174001'
-        CLIENT_SECRET = '7a91d1c9-2583-4ef6-8907-7c974f1d6a0e'
-        APPLICATION_ID = '673413da502d06461c39d283'
-        SCA_API_URL = 'https://appsecops-api.intruceptlabs.com/api/v1/integrations/sca-scans'
-        SAST_API_URL = 'https://appsecops-api.intruceptlabs.com/api/v1/integrations/sast-scans'
+        CLIENT_ID = '654621'
+        CLIENT_SECRET = '7a965dsf4e'
+        APPLICATION_ID = '673kajdh'
+        SCA_API_URL = 'https://test.com/api/sca-scans'
+        SAST_API_URL = 'htttps://test.com/api/sast-scans'
     }
 
     stages {
+        stage('Ensure curl is Installed') {
+            steps {
+                script {
+                    // Install curl if it's not already installed (Linux example)
+                    sh '''
+                    if ! command -v curl &> /dev/null; then
+                        echo "curl could not be found, installing..."
+                        sudo apt-get update && sudo apt-get install -y curl
+                    fi
+                    '''
+                }
+            }
+        }
+
         stage('Clean Up Old Files') {
             steps {
                 script {
@@ -134,3 +148,4 @@ pipeline {
         // Additional stages (e.g., deploy) can be added here
     }
 }
+
