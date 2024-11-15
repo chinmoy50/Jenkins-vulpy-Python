@@ -2,9 +2,6 @@ pipeline {
     agent any
 
     environment {
-        CLIENT_ID = '123e4567-e89b-12d3-a456-426614174001'
-        CLIENT_SECRET = '7a91d1c9-2583-4ef6-8907-7c974f1d6a0e'
-        APPLICATION_ID = '673413da502d06461c39d283'
         SCA_API_URL = 'https://appsecops-api.intruceptlabs.com/api/v1/integrations/sca-scans'
         SAST_API_URL = 'https://appsecops-api.intruceptlabs.com/api/v1/integrations/sast-scans'
     }
@@ -12,13 +9,7 @@ pipeline {
     stages {
         stage('Clean Up Old Files') {
             steps {
-                script {
-                    bat 'if exist venv rmdir /S /Q venv'
-                    bat 'if exist project.zip del /Q project.zip'
-                    bat 'del /Q *.json'
-                    bat 'del /Q *.csv'
-                    bat 'del /Q *.sh'
-                }
+                sh 'rm -rf venv project.zip *.json *.csv *.sh'
             }
         }
 
@@ -30,51 +21,39 @@ pipeline {
 
         stage('Create ZIP Files') {
             steps {
-                script {
-                    bat 'if exist project_folder rmdir /S /Q project_folder'
-                    bat 'mkdir project_folder'
-                    powershell '''
-                        Get-ChildItem -Exclude .git, venv, project_folder | ForEach-Object {
-                            Move-Item $_.FullName project_folder
-                        }
-                    '''
-                    bat 'powershell Compress-Archive -Path project_folder\\* -DestinationPath project.zip'
-                }
+                sh '''
+                    rm -rf project_folder
+                    mkdir project_folder
+                    find . -maxdepth 1 -not -name "." -not -name ".." -not -name ".git" -not -name "venv" -not -name "project_folder" -exec mv {} project_folder/ \\;
+                    zip -r project.zip project_folder
+                '''
             }
         }
 
         stage('Perform SCA Scan') {
             steps {
-                script {
-                    def response = bat(script: """
-                        powershell -Command "
-                        $client = New-Object System.Net.Http.HttpClient
-                        $client.DefaultRequestHeaders.Add('Client-ID', '${CLIENT_ID}')
-                        $client.DefaultRequestHeaders.Add('Client-Secret', '${CLIENT_SECRET}')
-                        $content = New-Object System.Net.Http.MultipartFormDataContent
-                        $fileStream = [System.IO.File]::OpenRead('project.zip')
-                        $fileContent = New-Object System.Net.Http.StreamContent($fileStream)
-                        $fileContent.Headers.ContentDisposition = New-Object System.Net.Http.Headers.ContentDispositionHeaderValue('form-data')
-                        $fileContent.Headers.ContentDisposition.Name = 'projectZipFile'
-                        $fileContent.Headers.ContentDisposition.FileName = 'project.zip'
-                        $content.Add($fileContent)
-                        $content.Add((New-Object System.Net.Http.StringContent('${APPLICATION_ID}')), 'applicationId')
-                        $content.Add((New-Object System.Net.Http.StringContent('New SCA Scan from Jenkins Pipeline')), 'scanName')
-                        $content.Add((New-Object System.Net.Http.StringContent('python')), 'language')
-                        $response = $client.PostAsync('${SCA_API_URL}', $content).Result
-                        $result = $response.Content.ReadAsStringAsync().Result
-                        Write-Output $result
-                        "
-                    """, returnStdout: true).trim()
+                withCredentials([
+                    string(credentialsId: 'client-id', variable: 'CLIENT_ID'),
+                    string(credentialsId: 'client-secret', variable: 'CLIENT_SECRET'),
+                    string(credentialsId: 'application-id', variable: 'APPLICATION_ID')
+                ]) {
+                    script {
+                        def response = sh(script: """
+                            curl -s -X POST \
+                            -H "Client-ID: ${CLIENT_ID}" \
+                            -H "Client-Secret: ${CLIENT_SECRET}" \
+                            -F "projectZipFile=@project.zip" \
+                            -F "applicationId=${APPLICATION_ID}" \
+                            -F "scanName=New SCA Scan from Jenkins Pipeline" \
+                            -F "language=python" \
+                            "${SCA_API_URL}"
+                        """, returnStdout: true).trim()
 
-                    def jsonResponse = readJSON(text: response)
-                    def canProceedSCA = jsonResponse.canProceed
-                    def vulnsTable = jsonResponse.vulnsTable
-
-                    echo "Vulnerabilities found during SCA:"
-                    echo "${vulnsTable}"
-
-                    env.CAN_PROCEED_SCA = canProceedSCA.toString()
+                        def jsonResponse = readJSON(text: response)
+                        env.CAN_PROCEED_SCA = jsonResponse.canProceed ? "true" : "false"
+                        
+                        echo "Vulnerabilities found during SCA: ${jsonResponse.vulnsTable}"
+                    }
                 }
             }
         }
@@ -93,36 +72,28 @@ pipeline {
                 expression { return env.CAN_PROCEED_SCA == 'true' }
             }
             steps {
-                script {
-                    def response = bat(script: """
-                        powershell -Command "
-                        $client = New-Object System.Net.Http.HttpClient
-                        $client.DefaultRequestHeaders.Add('Client-ID', '${CLIENT_ID}')
-                        $client.DefaultRequestHeaders.Add('Client-Secret', '${CLIENT_SECRET}')
-                        $content = New-Object System.Net.Http.MultipartFormDataContent
-                        $fileStream = [System.IO.File]::OpenRead('project.zip')
-                        $fileContent = New-Object System.Net.Http.StreamContent($fileStream)
-                        $fileContent.Headers.ContentDisposition = New-Object System.Net.Http.Headers.ContentDispositionHeaderValue('form-data')
-                        $fileContent.Headers.ContentDisposition.Name = 'projectZipFile'
-                        $fileContent.Headers.ContentDisposition.FileName = 'project.zip'
-                        $content.Add($fileContent)
-                        $content.Add((New-Object System.Net.Http.StringContent('${APPLICATION_ID}')), 'applicationId')
-                        $content.Add((New-Object System.Net.Http.StringContent('New SAST Scan from Jenkins Pipeline')), 'scanName')
-                        $content.Add((New-Object System.Net.Http.StringContent('python')), 'language')
-                        $response = $client.PostAsync('${SAST_API_URL}', $content).Result
-                        $result = $response.Content.ReadAsStringAsync().Result
-                        Write-Output $result
-                        "
-                    """, returnStdout: true).trim()
+                withCredentials([
+                    string(credentialsId: 'client-id', variable: 'CLIENT_ID'),
+                    string(credentialsId: 'client-secret', variable: 'CLIENT_SECRET'),
+                    string(credentialsId: 'application-id', variable: 'APPLICATION_ID')
+                ]) {
+                    script {
+                        def response = sh(script: """
+                            curl -s -X POST \
+                            -H "Client-ID: ${CLIENT_ID}" \
+                            -H "Client-Secret: ${CLIENT_SECRET}" \
+                            -F "projectZipFile=@project.zip" \
+                            -F "applicationId=${APPLICATION_ID}" \
+                            -F "scanName=New SAST Scan from Jenkins Pipeline" \
+                            -F "language=python" \
+                            "${SAST_API_URL}"
+                        """, returnStdout: true).trim()
 
-                    def jsonResponse = readJSON(text: response)
-                    def canProceedSAST = jsonResponse.canProceed
-                    def vulnsTable = jsonResponse.vulnsTable
-
-                    echo "Vulnerabilities found during SAST:"
-                    echo "${vulnsTable}"
-
-                    env.CAN_PROCEED_SAST = canProceedSAST.toString()
+                        def jsonResponse = readJSON(text: response)
+                        env.CAN_PROCEED_SAST = jsonResponse.canProceed ? "true" : "false"
+                        
+                        echo "Vulnerabilities found during SAST: ${jsonResponse.vulnsTable}"
+                    }
                 }
             }
         }
@@ -138,17 +109,15 @@ pipeline {
 
         stage('Set Up Python') {
             steps {
-                bat 'python -m venv venv'
-                bat 'venv\\Scripts\\activate && python -m pip install --upgrade pip'
+                sh 'python3 -m venv venv'
+                sh './venv/bin/pip install --upgrade pip'
             }
         }
 
         stage('Install Dependencies') {
             steps {
-                bat 'venv\\Scripts\\activate && pip install -r requirements.txt'
+                sh './venv/bin/pip install -r requirements.txt'
             }
         }
-
-        // Additional stages (e.g., deploy) can be added here
     }
 }
