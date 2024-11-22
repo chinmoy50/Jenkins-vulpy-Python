@@ -6,28 +6,10 @@ pipeline {
         CLIENT_SECRET = '7a91d1c9-2583-4ef6-8907-7c974f1d6a0e'
         APPLICATION_ID = '673413da502d06461c39d283'
         SCA_API_URL = 'https://appsecops-api.intruceptlabs.com/api/v1/integrations/sca-scans'
-        SAST_API_URL = 'https://appsecops-api.intruceptlabs.com/api/v1/integrations/sast-scans'  // Fixed typo from 'htttps'
+        SAST_API_URL = 'https://appsecops-api.intruceptlabs.com/api/v1/integrations/sast-scans'
     }
 
     stages {
-        // Ensure curl is installed (updated to use apt-get)
-        stage('Ensure curl is Installed') {
-            steps {
-                script {
-                    // Check if curl is available
-                    def curlAvailable = sh(script: 'command -v curl', returnStatus: true) == 0
-                    if (!curlAvailable) {
-                        echo "curl could not be found. Installing..."
-                        // Try to install curl using apt-get (for Debian-based systems)
-                        sh 'apt-get update && apt-get install -y curl'
-                    } else {
-                        echo "curl is already installed."
-                    }
-                }
-            }
-        }
-
-        // Clean up old files
         stage('Clean Up Old Files') {
             steps {
                 script {
@@ -40,26 +22,23 @@ pipeline {
             }
         }
 
-        // Checkout code from SCM
         stage('Checkout Code') {
             steps {
                 checkout scm
             }
         }
 
-        // Create ZIP file
         stage('Create ZIP Files') {
             steps {
                 script {
                     sh 'rm -rf project_folder'
                     sh 'mkdir project_folder'
-                    sh 'find . -maxdepth 1 -not -name "." -not -name ".." -not -name ".git" -not -name "venv" -not -name "project_folder" -exec mv {} project_folder/ \\;'
+                    sh 'find . -maxdepth 1 -not -name "." -not -name ".." -not -name ".git" -not -name "venv" -not -name "project_folder" -exec mv {} project_folder/ \;'
                     sh 'zip -r project.zip project_folder'
                 }
             }
         }
 
-        // Perform SCA scan
         stage('Perform SCA Scan') {
             steps {
                 script {
@@ -89,7 +68,6 @@ pipeline {
             }
         }
 
-        // Check SCA result
         stage('Check SCA Result') {
             when {
                 expression { return env.CAN_PROCEED_SCA != 'true' }
@@ -99,19 +77,14 @@ pipeline {
             }
         }
 
-        // Perform SAST scan (with debugging and additional checks)
         stage('Perform SAST Scan') {
             when {
                 expression { return env.CAN_PROCEED_SCA == 'true' }
             }
             steps {
                 script {
-                    echo "Starting SAST scan..."
-
-                    // Perform the SAST API request
                     def response = sh(script: """
                         #!/bin/bash
-                        echo "Sending request to SAST API..."
                         curl -v -X POST \
                         -H "Client-ID: ${CLIENT_ID}" \
                         -H "Client-Secret: ${CLIENT_SECRET}" \
@@ -120,45 +93,22 @@ pipeline {
                         -F "scanName=New SAST Scan from Jenkins Pipeline" \
                         -F "language=python" \
                         "${SAST_API_URL}"
-                    """, returnStdout: true, returnStatus: true)
+                    """, returnStdout: true).trim()
 
-                    // Log the response
-                    echo "SAST API Response: ${response}"
-
-                    // Parse the response
                     def jsonResponse = readJSON(text: response)
-                    echo "Parsed JSON Response: ${jsonResponse}"
-
-                    // Check if 'canProceed' field exists
-                    def canProceedSAST = jsonResponse?.canProceed
-                    if (canProceedSAST == null) {
-                        error "SAST response did not contain 'canProceed' field."
-                    }
-
+                    def canProceedSAST = jsonResponse.canProceed
                     def vulnsTable = jsonResponse.vulnsTable
-                    if (vulnsTable == null) {
-                        error "SAST response did not contain 'vulnsTable'."
-                    }
 
-                    // Clean up vulnerability table from escape sequences
                     def cleanVulnsTable = vulnsTable.replaceAll(/\x1B\[[;0-9]*m/, '')
 
-                    // Output vulnerabilities
                     echo "Vulnerabilities found during SAST:"
                     echo "${cleanVulnsTable}"
 
-                    // Set environment variable based on SAST result
                     env.CAN_PROCEED_SAST = canProceedSAST.toString()
-
-                    // Additional logic to check if the scan succeeded or failed
-                    if (canProceedSAST != 'true') {
-                        error "SAST scan failed. Deployment cancelled."
-                    }
                 }
             }
         }
 
-        // Check SAST result
         stage('Check SAST Result') {
             when {
                 expression { return env.CAN_PROCEED_SAST != 'true' }
@@ -168,7 +118,6 @@ pipeline {
             }
         }
 
-        // Set up Python environment
         stage('Set Up Python') {
             steps {
                 sh 'python3 -m venv venv'
@@ -176,7 +125,6 @@ pipeline {
             }
         }
 
-        // Install dependencies
         stage('Install Dependencies') {
             steps {
                 sh '. venv/bin/activate && pip install -r requirements.txt'
